@@ -14,9 +14,9 @@ class BaseTable:
 
 class Topic(BaseTable, Base):
   topic_id = Column(BigInteger, primary_key=True)
-  topic_name = Column(Text, nullable=False)
+  topic_name = Column(VARCHAR(length=30), nullable=False)
   topicTypes = ["hashtag", "url", "user_mention", "symbol"]
-  topic_type = Column(Enum(*topicTypes, name="topicType"), default="hashtag")
+  topic_type = Column(Enum(*topicTypes, name="topicType"))
 
 class TwitterUser(BaseTable, Base):
   user_id = Column(BigInteger, primary_key=True)

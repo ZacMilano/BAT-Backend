@@ -32,11 +32,12 @@ add_topic_mention = QUERIES['add_topic_mention'] # 2 args
 get_trends_with_bot_scores_query = QUERIES['get_trends_with_bot_scores'] # 1 args
 
 def get_trends_with_bot_scores(location=1, trend_count=10,
-    count_per_topic=500,
+    count_per_topic=100,
     fetch_new_tweets=True, save=False):
   if not fetch_new_tweets:
     with open('/home/ubuntu/bat/trend_dict.json', 'r') as fp:
       trend_dict = json.load(fp)
+      # print(trend_dict)
   else:
     trends = get_trends(location=location, count=trend_count)
     trend_dict = {trend: get_tweets_by_topic(trend, limit=count_per_topic)
@@ -48,6 +49,7 @@ def get_trends_with_bot_scores(location=1, trend_count=10,
         trends_to_remove.append(trend)
     for trend in trends_to_remove:
       trend_dict.pop(trend, None)
+      print('Removing tweet-less trend {}'.format(trend))
 
     # print(trend_dict)
     trend_dict = {trend: (transform_tweets(tweets)) for trend, tweets in
@@ -62,16 +64,20 @@ def get_trends_with_bot_scores(location=1, trend_count=10,
           add_topic_to_db(curs, trend)
         except psycopg2.IntegrityError:
           print('Ignoring duplicate trend {}'.format(trend))
+          # conn.rollback()
         for tweet in tweets:
           tweet_id_str, user_id_str, bot_score = tweet
           try:
             add_user_to_db(curs, user_id_str, bot_score)
+            # conn.rollback()
           except psycopg2.IntegrityError:
             print('Ignoring duplicate user {}'.format(user_id_str))
+            # conn.rollback()
           try:
             add_topic_mention_to_db(curs, tweet_id_str, trend, user_id_str)
           except psycopg2.IntegrityError:
             print('Ignoring duplicate tweet {}'.format(tweet_id_str))
+            # conn.rollback()
 
       curs.execute(get_trends_with_bot_scores_query.format(str(trend_count)))
       trends_list = curs.fetchall()
@@ -148,4 +154,4 @@ def add_topic_mention_to_db(curs, tweet_id_str, topic, user_id_str):
 
 # BotometerLite.BotometerLiteDetector()
 if __name__ == "__main__":
-  print(get_trends_with_bot_scores(fetch_new_tweets=True, save=True))
+  print(get_trends_with_bot_scores(fetch_new_tweets=False, save=True))

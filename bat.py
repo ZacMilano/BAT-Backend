@@ -29,9 +29,10 @@ CONNECT_ARGS = DB_CONFIG['connect_args']
 add_user = QUERIES['add_user'] # 3 args
 add_topic = QUERIES['add_topic'] # 1 args
 add_topic_mention = QUERIES['add_topic_mention'] # 2 args
-get_trends_with_bot_scores = QUERIES['get_trends_with_bot_scores'] # 1 args
+get_trends_with_bot_scores_query = QUERIES['get_trends_with_bot_scores'] # 1 args
 
-def get_trends_with_bot_scores(location=1, trend_count=10, count_per_topic=100,
+def get_trends_with_bot_scores(location=1, trend_count=10,
+    count_per_topic=500,
     fetch_new_tweets=True, save=False):
   if not fetch_new_tweets:
     with open('/home/ubuntu/bat/trend_dict.json', 'r') as fp:
@@ -57,14 +58,24 @@ def get_trends_with_bot_scores(location=1, trend_count=10, count_per_topic=100,
   with get_db_connection() as conn:
     with conn.cursor() as curs:
       for trend, tweets in trend_dict.items():
-        add_topic_to_db(curs, trend)
+        try:
+          add_topic_to_db(curs, trend)
+        except psycopg2.IntegrityError:
+          print('Ignoring duplicate trend {}'.format(trend))
         for tweet in tweets:
           tweet_id_str, user_id_str, bot_score = tweet
-          add_user_to_db(curs, user_id_str, bot_score)
-          add_topic_mention_to_db(curs, tweet_id_str, topic, user_id_str)
+          try:
+            add_user_to_db(curs, user_id_str, bot_score)
+          except psycopg2.IntegrityError:
+            print('Ignoring duplicate user {}'.format(user_id_str))
+          try:
+            add_topic_mention_to_db(curs, tweet_id_str, trend, user_id_str)
+          except psycopg2.IntegrityError:
+            print('Ignoring duplicate tweet {}'.format(tweet_id_str))
 
-      conn.execute(get_trends_with_bot_scores.format(str(trend_count)))
-      trends_list = conn.fetchall()
+      curs.execute(get_trends_with_bot_scores_query.format(str(trend_count)))
+      trends_list = curs.fetchall()
+  trends_list = [(trend, float(str(score))) for trend, score in trends_list]
   write_out_trends_with_bot_scores(trends_list)
   return trends_list
 
@@ -124,16 +135,17 @@ def transform_tweets(tweet_objs):
 
 def add_user_to_db(curs, user_id_str, bot_score):
   '''Add user to database with curs as the cursor'''
-  conn.execute(add_user.format(user_id_str, bot_score))
+  curs.execute(add_user.format(user_id_str, bot_score))
 
 def add_topic_to_db(curs, topic_name):
   '''Add topic/trend to database with curs as the cursor'''
-  curs.execute(add_topic.format(topic_name))
+  curs.execute(add_topic.format(topic_name.replace("'", "''")))
 
 def add_topic_mention_to_db(curs, tweet_id_str, topic, user_id_str):
   '''Add a mention of a topic in a tweet to database with curs as the cursor'''
-  curs.execute(add_topic_mention.format(tweet_id_str, topic, user_id_str))
+  curs.execute(add_topic_mention.format(tweet_id_str,
+    topic.replace("'", "''"), user_id_str))
 
 # BotometerLite.BotometerLiteDetector()
 if __name__ == "__main__":
-  print(get_trends_with_bot_scores(save=True))
+  print(get_trends_with_bot_scores(fetch_new_tweets=True, save=True))
